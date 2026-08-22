@@ -9,15 +9,17 @@ import { registerOrderTools, type OrderExecutor } from './orderTools';
 import { registerCommerceTools } from './commerceRegistry';
 import type { CommerceExecutor } from './commerce';
 import { detectLanguage, buildResponsePolicy } from './language';
+import { createLLMPlanner, createLLMEvaluator, type LLMStructuredCall } from './llmPlanner';
 import type { AgentState } from './types';
 
 export type KaviV2Dependencies = {
   commerce?: CommerceExecutor;
   orders?: OrderExecutor;
   knowledge?: EmptyKnowledgeRetriever;
+  llm: LLMStructuredCall;
 };
 
-export async function runKaviV2(userMessage: string, dependencies: KaviV2Dependencies = {}) {
+export async function runKaviV2(userMessage: string, dependencies: KaviV2Dependencies) {
   const { registry, session } = createKaprukaSearchRegistry();
   registerProductIntelligenceTools(registry);
 
@@ -27,29 +29,21 @@ export async function runKaviV2(userMessage: string, dependencies: KaviV2Depende
   registry.register(createKnowledgeSearchTool(dependencies.knowledge ?? new EmptyKnowledgeRetriever()));
 
   if (dependencies.commerce) registerCommerceTools(registry, dependencies.commerce);
-  if (dependencies.orders) {
-    for (const tool of registerOrderTools(dependencies.orders)) registry.register(tool);
-  }
+  if (dependencies.orders) for (const tool of registerOrderTools(dependencies.orders)) registry.register(tool);
 
   const initial = createAgentState(userMessage, 8);
   const language = detectLanguage(userMessage);
+  const planner = createLLMPlanner(dependencies.llm);
+  const evaluator = createLLMEvaluator(dependencies.llm);
+
   const finalState: AgentState = await runAgentLoop(initial, registry, {
-    async plan(state) {
-      if (!state.goal) {
-        return {
-          kind: 'act',
-          tool: 'search_products',
-          reason: 'Start with catalog discovery for a shopping request.',
-          input: { query: state.userMessage, limit: 12, maxPrice: state.constraints.maxPrice },
-        };
-      }
-      if (session.completed) return { kind: 'complete', reason: 'Shopping objective completed.' };
-      return { kind: 'act', tool: 'search_products', reason: 'Continue product discovery.' };
-    },
-    async evaluate(state) {
-      if (session.completed) return { kind: 'complete', reason: 'Search objective completed.' };
-      if (state.iteration >= state.maxIterations) return { kind: 'fail', reason: 'Agent budget exhausted.' };
-      return { kind: 'act', reason: 'Continue.' };
+    plan: planner,
+    async evaluate(state, result) {
+      const evaluation = await evaluator(state, result);
+      if (evaluation.success && evaluation.score >= 0.8) return { kind: 'complete', reason: evaluation.reason };
+      if (evaluation.nextAction?.kind === 'ask_user') return evaluation.nextAction;
+      if (evaluation.nextAction?.kind === 'act') return evaluation.nextAction;
+      return { kind: 'act', tool: 'search_products', reason: evaluation.reason, input: { query: state.userMessage, limit: 12 } };
     },
   });
 
