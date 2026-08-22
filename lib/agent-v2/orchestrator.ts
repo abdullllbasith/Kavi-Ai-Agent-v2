@@ -1,5 +1,6 @@
 import { runAgentLoop } from './agentLoop';
 import { createAgentState } from './state';
+import { establishGoal } from './goalManager';
 import { createKaprukaSearchRegistry } from './createKaprukaSearch';
 import { registerProductIntelligenceTools } from './productIntelligenceRegistry';
 import { InMemoryAgentMemory } from './memory';
@@ -23,15 +24,19 @@ export async function runKaviV2(userMessage: string, dependencies: KaviV2Depende
   const { registry, session } = createKaprukaSearchRegistry();
   registerProductIntelligenceTools(registry);
   const memory = dependencies.memory ? createMemoryAdapter(dependencies.memory, dependencies.userId) : new InMemoryAgentMemory();
-  registry.register(createRecallMemoryTool(memory)); registry.register(createRememberTool(memory));
+  registry.register(createRecallMemoryTool(memory));
+  registry.register(createRememberTool(memory));
   const knowledge = dependencies.knowledge ?? (dependencies.knowledgeBase ? createKnowledgeRetrieverAdapter(dependencies.knowledgeBase) : new EmptyKnowledgeRetriever());
   registry.register(createKnowledgeSearchTool(knowledge));
   if (dependencies.commerce) registerCommerceTools(registry, dependencies.commerce);
   if (dependencies.orders) for (const tool of registerOrderTools(dependencies.orders)) registry.register(tool);
+
   const initial = createAgentState(userMessage, 8);
-  const initialState: AgentState = { ...initial, constraints: { ...initial.constraints, userId: dependencies.userId } };
+  const withGoal = establishGoal(initial);
+  const initialState: AgentState = { ...withGoal, constraints: { ...withGoal.constraints, userId: dependencies.userId } };
   const language = detectLanguage(userMessage);
-  const planner = createLLMPlanner(dependencies.llm); const evaluator = createLLMEvaluator(dependencies.llm);
+  const planner = createLLMPlanner(dependencies.llm);
+  const evaluator = createLLMEvaluator(dependencies.llm);
   const finalState: AgentState = await runAgentLoop(initialState, registry, {
     plan: planner,
     async evaluate(state, result, tools) {
