@@ -2,7 +2,7 @@ import type { AgentState, ToolDefinition } from './types';
 import type { ToolRegistry } from './toolRegistry';
 
 export const KAPRUKA_MCP_URL = process.env.KAPRUKA_MCP_URL ?? 'https://mcp.kapruka.com/mcp';
-const PROTOCOL_VERSION = '2025-06-18';
+const PROTOCOL_VERSION = process.env.KAPRUKA_MCP_PROTOCOL_VERSION ?? '2025-06-18';
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RESPONSE_BYTES = 2_000_000;
 
@@ -31,7 +31,6 @@ export class KaprukaMcpClient {
   private nextId = 1;
   private sessionId?: string;
   private initialized = false;
-
   constructor(private readonly endpoint = KAPRUKA_MCP_URL) {}
 
   private async request(method: string, params?: Record<string, unknown>, notification = false): Promise<JsonRpcResponse | null> {
@@ -53,11 +52,7 @@ export class KaprukaMcpClient {
 
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
-    await this.request('initialize', {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: { name: 'kavi-ai-agent-v2', version: '0.2.0-alpha.1' },
-    });
+    await this.request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'kavi-ai-agent-v2', version: '0.2.0-alpha.1' } });
     await this.request('notifications/initialized', undefined, true);
     this.initialized = true;
   }
@@ -84,21 +79,14 @@ export class KaprukaMcpClient {
 
 function safeToolName(name: string): string { return name.replace(/[^a-zA-Z0-9_-]/g, '_'); }
 
-/** Register Kapruka's currently advertised MCP tools behind Kavi's existing security boundary. */
 export async function registerKaprukaMcpTools(registry: ToolRegistry, client = new KaprukaMcpClient()): Promise<string[]> {
   const tools = await client.listTools();
   for (const remote of tools) {
     const localName = safeToolName(remote.name);
     const requiresConfirmation = remote.name === 'kapruka_create_order';
-    const definition: ToolDefinition = {
-      name: localName,
-      description: remote.description ?? `Kapruka MCP tool: ${remote.name}`,
-      execute: async (input: unknown, _state: AgentState) => client.callTool(remote.name, input),
-    };
-    registry.register(definition, {
-      requiresConfirmation,
-      authorize: requiresConfirmation ? (_input, state) => Boolean(state.security?.userId) : undefined,
-    });
+    const schemaText = remote.inputSchema ? `\nInput schema: ${JSON.stringify(remote.inputSchema)}` : '';
+    const definition: ToolDefinition = { name: localName, description: `${remote.description ?? `Kapruka MCP tool: ${remote.name}`}${schemaText}`, execute: async (input: unknown, _state: AgentState) => client.callTool(remote.name, input) };
+    registry.register(definition, { requiresConfirmation, authorize: requiresConfirmation ? (_input, state) => Boolean(state.security?.userId) : undefined });
   }
   return tools.map((tool) => safeToolName(tool.name));
 }
