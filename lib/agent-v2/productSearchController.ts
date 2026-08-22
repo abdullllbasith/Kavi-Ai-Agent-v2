@@ -14,66 +14,38 @@ export function createProductSearchController(): AgentController {
   return {
     async plan(state: AgentState, _tools: ToolRegistry): Promise<AgentDecision> {
       if (!state.goal) {
-        return {
-          kind: 'ask_user',
-          reason: 'A product-search goal could not be established safely.',
-          question: 'What are you looking for, and is there a budget I should follow?',
-        };
+        return { kind: 'ask_user', reason: 'A product-search goal could not be established safely.', question: 'What are you looking for, and is there a budget I should follow?' };
       }
 
-      if (!latestSearch(state)) {
-        return {
-          kind: 'act',
-          tool: 'search_products',
-          reason: `Find candidates that advance the goal: ${state.goal.objective}`,
-          input: { query: state.goal.objective, limit: 12 },
-          expectedOutcome: 'Return relevant in-stock product candidates.',
-        };
+      const searches = state.actions.filter((a) => a.tool === 'search_products' && a.status === 'succeeded').length;
+      const evaluations = state.actions.filter((a) => a.tool === 'evaluate_product_search' && a.status === 'succeeded').length;
+      const searchObservation = latestSearch(state);
+      const searchData = searchObservation?.data as { products?: Array<{ product_id?: string }>; query?: string } | undefined;
+      const products = searchData?.products ?? [];
+      const evaluation = latestEvaluation(state)?.data as { canRefine?: boolean } | undefined;
+
+      if (searches === 0) {
+        return { kind: 'act', tool: 'search_products', reason: `Find candidates that advance the goal: ${state.goal.objective}`, input: { query: state.goal.objective, limit: 12 }, expectedOutcome: 'Return relevant in-stock product candidates.' };
       }
 
-      const evaluation = latestEvaluation(state)?.data as
-        | { canRefine?: boolean; guidance?: string }
-        | undefined;
-
-      if (evaluation?.canRefine) {
-        const lastQuery = latestSearch(state)?.data as { query?: string } | undefined;
-        return {
-          kind: 'act',
-          tool: 'search_products',
-          reason: 'The previous candidate set was not yet strong enough, so refine the search rather than stopping early.',
-          input: { query: `${lastQuery?.query ?? state.goal.objective} better options`, limit: 12 },
-          expectedOutcome: 'Improve candidate relevance without abandoning the user goal.',
-        };
+      if (evaluations === 0) {
+        return { kind: 'act', tool: 'evaluate_product_search', reason: 'Assess the first candidate set before deciding whether to refine.', input: { quality: products.length >= 5 ? 'good' : products.length > 0 ? 'weak' : 'empty' } };
       }
 
-      return {
-        kind: 'act',
-        tool: 'complete_product_search',
-        reason: 'Search budget is exhausted; select the strongest known candidates and complete the discovery task.',
-        input: { productIds: [], reason: 'Best available candidates after bounded search refinement.' },
-      };
+      if (evaluation?.canRefine && products.length < 5 && searches < 3) {
+        return { kind: 'act', tool: 'search_products', reason: 'The candidate set is weak, so refine the search instead of stopping early.', input: { query: `${searchData?.query ?? state.goal.objective} better options`, limit: 12 }, expectedOutcome: 'Improve candidate relevance without abandoning the goal.' };
+      }
+
+      const productIds = products.map((p) => p.product_id).filter((id): id is string => Boolean(id)).slice(0, 8);
+      if (productIds.length === 0) return { kind: 'fail', reason: 'No valid product IDs were returned after the bounded search loop.' };
+
+      return { kind: 'act', tool: 'complete_product_search', reason: 'Select the strongest known candidates after search and evaluation.', input: { productIds, reason: 'Best available candidates after bounded search refinement.' } };
     },
 
     async evaluate(state: AgentState, _result?: unknown): Promise<AgentDecision> {
       const last = state.actions.at(-1);
-      if (last?.tool === 'search_products') {
-        const observation = latestSearch(state);
-        const data = observation?.data as { products?: unknown[] } | undefined;
-        const count = data?.products?.length ?? 0;
-        return {
-          kind: 'act',
-          tool: 'evaluate_product_search',
-          reason: count >= 3 ? 'Assess whether the returned candidates satisfy the goal.' : 'Assess the weak result set before deciding whether to refine.',
-          input: {
-            quality: count >= 5 ? 'good' : count > 0 ? 'weak' : 'empty',
-            issues: count < 3 ? ['Too few candidates'] : [],
-          },
-          expectedOutcome: 'Determine whether another search is justified.',
-        };
-      }
-
       if (last?.tool === 'complete_product_search') return { kind: 'complete', reason: 'Product discovery completed.' };
-      return { kind: 'act', tool: 'evaluate_product_search', reason: 'Evaluate the latest search observation.', input: { quality: 'weak' } };
+      return { kind: 'act', reason: 'Continue the bounded search loop.' };
     },
   };
 }
