@@ -7,9 +7,10 @@ if (incomplete.success) throw new Error('Evaluator incorrectly accepted incomple
 const complete = validateEvaluationDecision({ success: true, score: 0.95, reason: 'All criteria are satisfied by observations.', missing: [], satisfiedCriteria: criteria, nextAction: null }, ['search_products'], criteria);
 if (!complete.success) throw new Error('Evaluator rejected complete goal evidence.');
 
-try {
-  validateEvaluationDecision({ success: true, score: 1, reason: 'done', missing: [], satisfiedCriteria: ['invented criterion'], nextAction: null }, ['search_products'], criteria);
-  throw new Error('Expected invalid criterion to be rejected.');
-} catch (error) {
-  if (error instanceof Error && error.message === 'Expected invalid criterion to be rejected.') throw error;
+await expectReject(() => validateEvaluationDecision({ success: true, score: 1, reason: 'done', missing: [], satisfiedCriteria: ['invented criterion'], nextAction: null }, ['search_products'], criteria));
+await expectReject(() => validateEvaluationDecision({ success: false, score: 0.4, reason: 'missing unrelated fact', missing: ['invented criterion'], satisfiedCriteria: ['relevant products'], nextAction: null }, ['search_products'], criteria));
+
+async function expectReject(fn: () => unknown) {
+  try { fn(); throw new Error('Expected invalid evaluator output to be rejected.'); }
+  catch (error) { if (error instanceof Error && error.message === 'Expected invalid evaluator output to be rejected.') throw error; }
 }
