@@ -31,7 +31,9 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
       if (evaluation.kind === 'complete') return { ...state, status: 'completed' };
       if (evaluation.kind === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: evaluation.question };
     } catch (error) {
-      state = { ...state, status: 'evaluating', actions: state.actions.map((item) => item.id === action.id ? { ...item, status: 'failed', error: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() } : item), lastEvaluation: { success: false, score: 0, reason: error instanceof Error ? error.message : String(error) } };
+      const message = error instanceof Error ? error.message : String(error);
+      state = { ...state, status: 'evaluating', actions: state.actions.map((item) => item.id === action.id ? { ...item, status: 'failed', error: message, completedAt: new Date().toISOString() } : item), lastEvaluation: { success: false, score: 0, reason: message } };
+      if (/authorization|forbidden|permission|confirmation required/i.test(message)) return { ...state, status: 'waiting_for_user', pendingQuestion: 'I need authorization or confirmation before I can continue.' };
     }
   }
   return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: 'Agent iteration budget exhausted.' } };
