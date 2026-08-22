@@ -1,7 +1,7 @@
 import type { AgentState, AgentAction, Observation } from './types';
 import { ToolRegistry } from './toolRegistry';
 import { validateActionBudget, hasRepeatedAction, DEFAULT_GUARDRAILS, type GuardrailConfig } from './guardrails';
-import { hasSufficientEvidence } from './reliability';
+import { hasSufficientEvidence, detectToolFailureRecovery } from './reliability';
 
 export type AgentDecision = { kind: 'act' | 'ask_user' | 'complete' | 'fail'; tool?: string; reason: string; input?: unknown; expectedOutcome?: string; question?: string };
 export type AgentController = { plan: (state: AgentState, tools: ToolRegistry) => Promise<AgentDecision>; evaluate: (state: AgentState, result: unknown, tools: ToolRegistry) => Promise<AgentDecision> };
@@ -32,10 +32,13 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
       state = { ...state, lastEvaluation: { success: evaluationComplete, score: evaluationComplete ? 1 : 0, reason: evaluationComplete ? evaluation.reason : evaluation.kind === 'complete' ? 'Completion rejected: insufficient evidence.' : evaluation.reason, nextStep: evaluation.tool } };
       if (evaluationComplete) return { ...state, status: 'completed' };
       if (evaluation.kind === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: evaluation.question };
+      if (evaluation.kind === 'fail') return { ...state, status: 'failed' };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       state = { ...state, status: 'evaluating', actions: state.actions.map((item) => item.id === action.id ? { ...item, status: 'failed', error: message, completedAt: new Date().toISOString() } : item), lastEvaluation: { success: false, score: 0, reason: message } };
-      if (/authorization|forbidden|permission|confirmation required/i.test(message)) return { ...state, status: 'waiting_for_user', pendingQuestion: 'I need authorization or confirmation before I can continue.' };
+      const recovery = detectToolFailureRecovery(state);
+      if (recovery === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: 'I need authorization or confirmation before I can continue.' };
+      if (recovery === 'retry') continue;
     }
   }
   return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: 'Agent iteration budget exhausted.' } };
