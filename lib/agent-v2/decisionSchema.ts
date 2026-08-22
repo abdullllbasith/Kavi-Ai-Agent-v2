@@ -3,7 +3,6 @@ export type PlannerDecision =
   | { kind: 'ask_user'; reason: string; question: string }
   | { kind: 'complete'; reason: string }
   | { kind: 'fail'; reason: string };
-
 export type EvaluationDecision = { success: boolean; score: number; reason: string; missing: string[]; satisfiedCriteria: string[]; nextAction?: PlannerDecision };
 const MAX_TEXT = 2000;
 const MAX_INPUT_KEYS = 32;
@@ -29,6 +28,7 @@ export function validateEvaluationDecision(value: unknown, availableTools: strin
   const satisfiedCriteria = data.satisfiedCriteria === undefined ? [] : list(data.satisfiedCriteria, 'Satisfied criterion');
   const allowed = new Set(requiredCriteria);
   if (satisfiedCriteria.some((criterion) => !allowed.has(criterion))) throw new Error('Evaluator returned a criterion that is not part of the goal.');
+  if (missing.some((criterion) => !allowed.has(criterion))) throw new Error('Evaluator marked a non-goal criterion as missing.');
   const complete = requiredCriteria.length > 0 && requiredCriteria.every((criterion) => satisfiedCriteria.includes(criterion)) && missing.length === 0;
   if (data.success && !complete) throw new Error('Evaluator cannot report success until every goal criterion is satisfied.');
   const nextAction = data.nextAction === null || data.nextAction === undefined ? undefined : validatePlannerDecision(data.nextAction, availableTools);
