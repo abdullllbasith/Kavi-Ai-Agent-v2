@@ -1,7 +1,7 @@
 import type { AgentState } from './types';
 import type { ToolRegistry } from './toolRegistry';
 import type { PlannerDecision, EvaluationDecision } from './decisionSchema';
-import { validatePlannerDecision } from './decisionSchema';
+import { validatePlannerDecision, validateEvaluationDecision } from './decisionSchema';
 
 export type LLMStructuredCall = <T>(input: {
   system: string;
@@ -35,6 +35,7 @@ export function createLLMEvaluator(call: LLMStructuredCall) {
   return async (state: AgentState, toolResult?: unknown): Promise<EvaluationDecision> => {
     const system = `You are Kavi's goal evaluator. Determine whether the user's goal is actually satisfied by the observed evidence. Be conservative: missing evidence is not success. If not satisfied, identify what is missing and suggest a single next action. Do not invent facts.`;
     const user = `Agent state:\n${summarizeState(state)}\nLatest tool result:\n${JSON.stringify(toolResult)}\nReturn a structured evaluation.`;
-    return call<EvaluationDecision>({ system, user, schema: 'EvaluationDecision(success:boolean, score:number 0..1, reason:string, missing:string[], nextAction:PlannerDecision|null)' });
+    const raw = await call<unknown>({ system, user, schema: 'EvaluationDecision(success:boolean, score:number 0..1, reason:string, missing:string[], nextAction:PlannerDecision|null)' });
+    return validateEvaluationDecision(raw);
   };
 }
