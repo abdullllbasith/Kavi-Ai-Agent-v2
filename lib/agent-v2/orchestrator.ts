@@ -16,56 +16,31 @@ import { createMemoryAdapter } from './memoryAdapter';
 import type { KnowledgeBase } from './rag';
 import { createKnowledgeRetrieverAdapter } from './ragAdapter';
 
-export type KaviV2Dependencies = {
-  userId: string;
-  commerce?: CommerceExecutor;
-  orders?: OrderExecutor;
-  knowledge?: KnowledgeRetriever;
-  knowledgeBase?: KnowledgeBase;
-  memory?: PersistentMemoryStore;
-  llm: LLMStructuredCall;
-};
+export type KaviV2Dependencies = { userId: string; commerce?: CommerceExecutor; orders?: OrderExecutor; knowledge?: KnowledgeRetriever; knowledgeBase?: KnowledgeBase; memory?: PersistentMemoryStore; llm: LLMStructuredCall };
 
 export async function runKaviV2(userMessage: string, dependencies: KaviV2Dependencies) {
   if (!dependencies.userId?.trim()) throw new Error('userId is required.');
-
   const { registry, session } = createKaprukaSearchRegistry();
   registerProductIntelligenceTools(registry);
-
-  const memory = dependencies.memory
-    ? createMemoryAdapter(dependencies.memory, dependencies.userId)
-    : new InMemoryAgentMemory();
-  registry.register(createRecallMemoryTool(memory));
-  registry.register(createRememberTool(memory));
-
-  const knowledge = dependencies.knowledge
-    ?? (dependencies.knowledgeBase ? createKnowledgeRetrieverAdapter(dependencies.knowledgeBase) : new EmptyKnowledgeRetriever());
+  const memory = dependencies.memory ? createMemoryAdapter(dependencies.memory, dependencies.userId) : new InMemoryAgentMemory();
+  registry.register(createRecallMemoryTool(memory)); registry.register(createRememberTool(memory));
+  const knowledge = dependencies.knowledge ?? (dependencies.knowledgeBase ? createKnowledgeRetrieverAdapter(dependencies.knowledgeBase) : new EmptyKnowledgeRetriever());
   registry.register(createKnowledgeSearchTool(knowledge));
-
   if (dependencies.commerce) registerCommerceTools(registry, dependencies.commerce);
   if (dependencies.orders) for (const tool of registerOrderTools(dependencies.orders)) registry.register(tool);
-
   const initial = createAgentState(userMessage, 8);
+  const initialState: AgentState = { ...initial, constraints: { ...initial.constraints, userId: dependencies.userId } };
   const language = detectLanguage(userMessage);
-  const planner = createLLMPlanner(dependencies.llm);
-  const evaluator = createLLMEvaluator(dependencies.llm);
-
-  const finalState: AgentState = await runAgentLoop(initial, registry, {
+  const planner = createLLMPlanner(dependencies.llm); const evaluator = createLLMEvaluator(dependencies.llm);
+  const finalState: AgentState = await runAgentLoop(initialState, registry, {
     plan: planner,
-    async evaluate(state, result) {
-      const evaluation = await evaluator(state, result);
+    async evaluate(state, result, tools) {
+      const evaluation = await evaluator(state, result, tools);
       if (evaluation.success && evaluation.score >= 0.8) return { kind: 'complete', reason: evaluation.reason };
       if (evaluation.nextAction?.kind === 'ask_user') return evaluation.nextAction;
       if (evaluation.nextAction?.kind === 'act') return evaluation.nextAction;
-      return { kind: 'act', tool: 'search_products', reason: evaluation.reason, input: { query: state.userMessage, limit: 12 } };
+      return { kind: 'fail', reason: evaluation.reason };
     },
   });
-
-  return {
-    state: finalState,
-    userId: dependencies.userId,
-    language,
-    responsePolicy: buildResponsePolicy({ language }),
-    selectedProductIds: session.selectedIds,
-  };
+  return { state: finalState, userId: dependencies.userId, language, responsePolicy: buildResponsePolicy({ language }), selectedProductIds: session.selectedIds };
 }
