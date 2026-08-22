@@ -1,5 +1,6 @@
 import type { AgentState, AgentAction, Observation } from './types';
 import { ToolRegistry } from './toolRegistry';
+import { validateActionBudget, hasRepeatedAction, DEFAULT_GUARDRAILS, type GuardrailConfig } from './guardrails';
 
 export type AgentDecision = {
   kind: 'act' | 'ask_user' | 'complete' | 'fail';
@@ -15,7 +16,7 @@ export type AgentController = {
   evaluate: (state: AgentState, result?: unknown) => Promise<AgentDecision>;
 };
 
-export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry, controller: AgentController): Promise<AgentState> {
+export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry, controller: AgentController, guardrails: GuardrailConfig = DEFAULT_GUARDRAILS): Promise<AgentState> {
   let state = initialState;
 
   for (let i = 0; i < state.maxIterations; i += 1) {
@@ -29,7 +30,16 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
 
     if (decision.kind === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: decision.question };
     if (decision.kind === 'complete') return { ...state, status: 'completed' };
-    if (decision.kind === 'fail' || !decision.tool) return { ...state, status: 'failed' };
+    if (decision.kind === 'fail' || !decision.tool) return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: decision.reason } };
+
+    try {
+      validateActionBudget(state.actions, decision.tool, guardrails);
+      if (hasRepeatedAction(state.actions, decision.tool, decision.input)) {
+        return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: `Repeated identical action blocked: ${decision.tool}` } };
+      }
+    } catch (error) {
+      return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: error instanceof Error ? error.message : String(error) } };
+    }
 
     const action: AgentAction = {
       id: crypto.randomUUID(), tool: decision.tool, reason: decision.reason,
@@ -46,19 +56,15 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
       };
       state = {
         ...state, status: 'evaluating', observations: [...state.observations, observation],
-        actions: state.actions.map((item) => item.id === action.id
-          ? { ...item, status: 'succeeded', output, completedAt: new Date().toISOString() }
-          : item),
+        actions: state.actions.map((item) => item.id === action.id ? { ...item, status: 'succeeded', output, completedAt: new Date().toISOString() } : item),
       };
 
       const evaluation = await controller.evaluate(state, output);
       state = {
         ...state,
         lastEvaluation: {
-          success: evaluation.kind === 'complete',
-          score: evaluation.kind === 'complete' ? 1 : 0,
-          reason: evaluation.reason,
-          nextStep: evaluation.tool,
+          success: evaluation.kind === 'complete', score: evaluation.kind === 'complete' ? 1 : 0,
+          reason: evaluation.reason, nextStep: evaluation.tool,
         },
       };
       if (evaluation.kind === 'complete') return { ...state, status: 'completed' };
@@ -66,9 +72,7 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
     } catch (error) {
       state = {
         ...state, status: 'evaluating',
-        actions: state.actions.map((item) => item.id === action.id
-          ? { ...item, status: 'failed', error: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() }
-          : item),
+        actions: state.actions.map((item) => item.id === action.id ? { ...item, status: 'failed', error: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() } : item),
         lastEvaluation: { success: false, score: 0, reason: error instanceof Error ? error.message : String(error) },
       };
     }
