@@ -1,4 +1,5 @@
 import type { AgentState, ToolDefinition } from './types';
+import { consumeConfirmation } from './confirmation';
 export type CommerceAction = 'add_to_cart' | 'checkout' | 'cancel_order';
 export type PermissionLevel = 'read' | 'user_confirmation' | 'blocked';
 export type CheckoutInput = { cartId: string; shippingAddressId?: string; paymentMethodId?: string; deliveryOptionId?: string; [key: string]: unknown };
@@ -11,6 +12,7 @@ export function createCommerceTool(action: CommerceAction, executor: CommerceExe
     if (!userId) throw new Error('Authenticated user is required for commerce operations.');
     if (!executor.authorize) throw new Error(`Commerce authorization is not configured for ${action}.`);
     if (!(await executor.authorize(userId, action, input as Record<string, unknown>))) throw new Error(`Commerce authorization denied: ${action}.`);
+    if (requiresConfirmation(action)) consumeConfirmation(state, action, input);
     if (action === 'add_to_cart') { const data = input as { productId?: string; quantity?: number }; if (!data.productId) throw new Error('productId is required.'); return executor.addToCart?.({ productId: data.productId, quantity: Math.max(1, data.quantity ?? 1) }); }
     if (action === 'checkout') return executor.checkout?.(input as CheckoutInput);
     const orderId = (input as { orderId?: string })?.orderId; if (!orderId) throw new Error('orderId is required.'); return executor.cancelOrder?.({ orderId });
