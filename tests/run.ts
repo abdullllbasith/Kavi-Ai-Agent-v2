@@ -5,8 +5,8 @@ import './orchestratorWiring.js';
 import './adversarialDecisions.js';
 import './completionEvidence.js';
 import './agentLoopRecovery.js';
+import './goalEvaluation.js';
 import { runIntegrationScenarios } from './integration.js';
-
 const guardrails = runGuardrailRegressionTests();
 console.log('Kavi V2 guardrail tests:', guardrails);
 const integration = await runIntegrationScenarios();
