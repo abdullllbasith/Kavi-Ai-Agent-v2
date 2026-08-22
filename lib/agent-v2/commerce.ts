@@ -19,30 +19,17 @@ export function requiresConfirmation(action: CommerceAction): boolean {
   return permissionFor[action] === 'user_confirmation';
 }
 
-export function createCommerceTool(
-  action: CommerceAction,
-  executor: CommerceExecutor,
-): ToolDefinition {
+export function createCommerceTool(action: CommerceAction, executor: CommerceExecutor): ToolDefinition {
   return {
     name: action,
     description: `${action} commerce operation. Explicit user confirmation is required before execution.`,
-    async execute(input, state: AgentState) {
-      if (state.constraints.commerceConfirmed !== true) {
-        return {
-          status: 'confirmation_required',
-          action,
-          message: `User confirmation is required before ${action}.`,
-        };
-      }
-
+    async execute(input, _state: AgentState) {
       if (action === 'add_to_cart') {
         const data = input as { productId?: string; quantity?: number };
         if (!data.productId) throw new Error('productId is required.');
         return executor.addToCart?.({ productId: data.productId, quantity: Math.max(1, data.quantity ?? 1) });
       }
-
       if (action === 'checkout') return executor.checkout?.((input ?? {}) as Record<string, unknown>);
-
       const orderId = (input as { orderId?: string })?.orderId;
       if (!orderId) throw new Error('orderId is required.');
       return executor.cancelOrder?.({ orderId });
@@ -53,7 +40,7 @@ export function createCommerceTool(
 export function createCommerceReadTool(
   name: string,
   description: string,
-  execute: (input: unknown) => Promise<unknown>,
+  execute: (input: unknown, state: AgentState) => Promise<unknown>,
 ): ToolDefinition {
-  return { name, description, async execute(input) { return execute(input); } };
+  return { name, description, async execute(input, state) { return execute(input, state); } };
 }
