@@ -2,28 +2,24 @@ import type { AgentState, ToolDefinition } from './types';
 
 export type CommerceAction = 'add_to_cart' | 'checkout' | 'cancel_order';
 export type PermissionLevel = 'read' | 'user_confirmation' | 'blocked';
-
 export type CommerceExecutor = {
   addToCart?: (input: { productId: string; quantity: number }) => Promise<unknown>;
   checkout?: (input: Record<string, unknown>) => Promise<unknown>;
   cancelOrder?: (input: { orderId: string }) => Promise<unknown>;
+  authorize?: (userId: string, action: CommerceAction, input: Record<string, unknown>) => Promise<boolean> | boolean;
 };
-
-const permissionFor: Record<CommerceAction, PermissionLevel> = {
-  add_to_cart: 'user_confirmation',
-  checkout: 'user_confirmation',
-  cancel_order: 'user_confirmation',
-};
-
-export function requiresConfirmation(action: CommerceAction): boolean {
-  return permissionFor[action] === 'user_confirmation';
-}
+const permissionFor: Record<CommerceAction, PermissionLevel> = { add_to_cart: 'user_confirmation', checkout: 'user_confirmation', cancel_order: 'user_confirmation' };
+export function requiresConfirmation(action: CommerceAction): boolean { return permissionFor[action] === 'user_confirmation'; }
 
 export function createCommerceTool(action: CommerceAction, executor: CommerceExecutor): ToolDefinition {
   return {
     name: action,
-    description: `${action} commerce operation. Explicit user confirmation is required before execution.`,
-    async execute(input, _state: AgentState) {
+    description: `${action} commerce operation. Authenticated ownership and explicit user confirmation are required before execution.`,
+    async execute(input, state: AgentState) {
+      const userId = typeof state.constraints.userId === 'string' ? state.constraints.userId.trim() : '';
+      if (!userId) throw new Error('Authenticated user is required for commerce operations.');
+      if (!executor.authorize) throw new Error(`Commerce authorization is not configured for ${action}.`);
+      if (!(await executor.authorize(userId, action, input as Record<string, unknown>))) throw new Error(`Commerce authorization denied: ${action}.`);
       if (action === 'add_to_cart') {
         const data = input as { productId?: string; quantity?: number };
         if (!data.productId) throw new Error('productId is required.');
@@ -36,11 +32,4 @@ export function createCommerceTool(action: CommerceAction, executor: CommerceExe
     },
   };
 }
-
-export function createCommerceReadTool(
-  name: string,
-  description: string,
-  execute: (input: unknown, state: AgentState) => Promise<unknown>,
-): ToolDefinition {
-  return { name, description, async execute(input, state) { return execute(input, state); } };
-}
+export function createCommerceReadTool(name: string, description: string, execute: (input: unknown, state: AgentState) => Promise<unknown>): ToolDefinition { return { name, description, async execute(input, state) { return execute(input, state); } }; }
