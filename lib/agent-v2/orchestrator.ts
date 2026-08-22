@@ -3,7 +3,7 @@ import { createAgentState } from './state';
 import { createKaprukaSearchRegistry } from './createKaprukaSearch';
 import { registerProductIntelligenceTools } from './productIntelligenceRegistry';
 import { InMemoryAgentMemory } from './memory';
-import { EmptyKnowledgeRetriever } from './knowledge';
+import { EmptyKnowledgeRetriever, type KnowledgeRetriever } from './knowledge';
 import { createKnowledgeSearchTool, createRecallMemoryTool, createRememberTool } from './memoryTools';
 import { registerOrderTools, type OrderExecutor } from './orderTools';
 import { registerCommerceTools } from './commerceRegistry';
@@ -15,7 +15,7 @@ import type { AgentState } from './types';
 export type KaviV2Dependencies = {
   commerce?: CommerceExecutor;
   orders?: OrderExecutor;
-  knowledge?: EmptyKnowledgeRetriever;
+  knowledge?: KnowledgeRetriever;
   llm: LLMStructuredCall;
 };
 
