@@ -1,6 +1,6 @@
 import type { AgentState, ToolDefinition } from './types';
 import { asRecord } from './inputValidation';
-import { isConfirmationValid } from './confirmation';
+import { consumeConfirmation } from './confirmation';
 
 export type ToolSecurityPolicy = {
   requiresConfirmation?: boolean;
@@ -11,40 +11,22 @@ export type ToolSecurityPolicy = {
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDefinition>();
   private readonly policies = new Map<string, ToolSecurityPolicy>();
-
   register<TInput, TOutput>(tool: ToolDefinition<TInput, TOutput>, policy: ToolSecurityPolicy = {}): void {
     if (this.tools.has(tool.name)) throw new Error(`Tool already registered: ${tool.name}`);
     this.tools.set(tool.name, tool as ToolDefinition);
     this.policies.set(tool.name, policy);
   }
-
   get(name: string): ToolDefinition {
-    const tool = this.tools.get(name);
-    if (!tool) throw new Error(`Unknown tool: ${name}`);
-    return tool;
+    const tool = this.tools.get(name); if (!tool) throw new Error(`Unknown tool: ${name}`); return tool;
   }
-
-  list(): ToolDefinition[] {
-    return [...this.tools.values()];
-  }
-
+  list(): ToolDefinition[] { return [...this.tools.values()]; }
   async execute(name: string, input: unknown, state: AgentState): Promise<unknown> {
-    const tool = this.get(name);
-    const policy = this.policies.get(name) ?? {};
-
-    if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-      throw new Error(`Invalid input for tool ${name}: expected an object.`);
-    }
+    const tool = this.get(name); const policy = this.policies.get(name) ?? {};
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) throw new Error(`Invalid input for tool ${name}: expected an object.`);
     asRecord(input, `${name} input`);
-
     if (policy.validate) policy.validate(input, state);
-    if (policy.requiresConfirmation && !isConfirmationValid(state, name, input)) {
-      throw new Error(`Valid confirmation required for tool ${name}.`);
-    }
-    if (policy.authorize && !(await policy.authorize(input, state))) {
-      throw new Error(`Tool authorization denied: ${name}.`);
-    }
-
+    if (policy.requiresConfirmation) consumeConfirmation(state, name, input);
+    if (policy.authorize && !(await policy.authorize(input, state))) throw new Error(`Tool authorization denied: ${name}.`);
     return tool.execute(input, state);
   }
 }
