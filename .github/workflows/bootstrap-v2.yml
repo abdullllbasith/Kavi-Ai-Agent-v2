@@ -1,0 +1,334 @@
+name: Bootstrap Kavi Agent v2
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout v2
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Checkout Kavi v1
+        uses: actions/checkout@v6
+        with:
+          repository: abdullllbasith/Kavi-Ai-Agent
+          ref: main
+          path: .kavi-v1
+          fetch-depth: 1
+
+      - name: Copy v1 application
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a --delete --exclude='.git' --exclude='.github/workflows/bootstrap-v2.yml' .kavi-v1/ ./
+          rm -rf .kavi-v1
+
+      - name: Add v2 agent core
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p lib/agent-v2
+
+          cat > lib/agent-v2/types.ts <<'EOF'
+          export type AgentStatus =
+            | 'understanding'
+            | 'planning'
+            | 'acting'
+            | 'evaluating'
+            | 'waiting_for_user'
+            | 'completed'
+            | 'failed';
+
+          export type Goal = {
+            id: string;
+            objective: string;
+            type?: string;
+            successCriteria: string[];
+            confidence: number;
+            createdAt: string;
+            updatedAt: string;
+          };
+
+          export type Constraints = Record<string, unknown>;
+
+          export type Observation = {
+            id: string;
+            source: string;
+            summary: string;
+            data?: unknown;
+            createdAt: string;
+          };
+
+          export type AgentAction = {
+            id: string;
+            tool: string;
+            reason: string;
+            input: unknown;
+            expectedOutcome?: string;
+            status: 'planned' | 'running' | 'succeeded' | 'failed';
+            output?: unknown;
+            error?: string;
+            startedAt?: string;
+            completedAt?: string;
+          };
+
+          export type AgentState = {
+            turnId: string;
+            status: AgentStatus;
+            userMessage: string;
+            goal: Goal | null;
+            constraints: Constraints;
+            plan: string[];
+            observations: Observation[];
+            actions: AgentAction[];
+            iteration: number;
+            maxIterations: number;
+            pendingQuestion?: string;
+            lastEvaluation?: {
+              success: boolean;
+              score: number;
+              reason: string;
+              nextStep?: string;
+            };
+          };
+
+          export type ToolDefinition<TInput = unknown, TOutput = unknown> = {
+            name: string;
+            description: string;
+            execute: (input: TInput, state: AgentState) => Promise<TOutput>;
+          };
+EOF
+
+          cat > lib/agent-v2/state.ts <<'EOF'
+          import type { AgentState, Goal, Observation, AgentAction } from './types';
+
+          export function createAgentState(userMessage: string, maxIterations = 6): AgentState {
+            const now = new Date().toISOString();
+            return {
+              turnId: crypto.randomUUID(),
+              status: 'understanding',
+              userMessage,
+              goal: null,
+              constraints: {},
+              plan: [],
+              observations: [],
+              actions: [],
+              iteration: 0,
+              maxIterations,
+            };
+          }
+
+          export function setGoal(state: AgentState, goal: Goal): AgentState {
+            return { ...state, goal, updatedAt: undefined } as AgentState;
+          }
+
+          export function addObservation(state: AgentState, observation: Observation): AgentState {
+            return { ...state, observations: [...state.observations, observation] };
+          }
+
+          export function addAction(state: AgentState, action: AgentAction): AgentState {
+            return { ...state, actions: [...state.actions, action] };
+          }
+EOF
+
+          cat > lib/agent-v2/toolRegistry.ts <<'EOF'
+          import type { AgentState, ToolDefinition } from './types';
+
+          export class ToolRegistry {
+            private readonly tools = new Map<string, ToolDefinition>();
+
+            register<TInput, TOutput>(tool: ToolDefinition<TInput, TOutput>): void {
+              if (this.tools.has(tool.name)) {
+                throw new Error(`Tool already registered: ${tool.name}`);
+              }
+              this.tools.set(tool.name, tool as ToolDefinition);
+            }
+
+            get(name: string): ToolDefinition {
+              const tool = this.tools.get(name);
+              if (!tool) throw new Error(`Unknown tool: ${name}`);
+              return tool;
+            }
+
+            list(): ToolDefinition[] {
+              return [...this.tools.values()];
+            }
+
+            async execute(name: string, input: unknown, state: AgentState): Promise<unknown> {
+              return this.get(name).execute(input, state);
+            }
+          }
+EOF
+
+          cat > lib/agent-v2/agentLoop.ts <<'EOF'
+          import type { AgentState, AgentAction, Observation } from './types';
+          import { ToolRegistry } from './toolRegistry';
+
+          export type AgentDecision = {
+            kind: 'act' | 'ask_user' | 'complete' | 'fail';
+            tool?: string;
+            reason: string;
+            input?: unknown;
+            expectedOutcome?: string;
+            question?: string;
+          };
+
+          export type AgentController = {
+            plan: (state: AgentState, tools: ToolRegistry) => Promise<AgentDecision>;
+            evaluate: (state: AgentState, result?: unknown) => Promise<AgentDecision>;
+          };
+
+          export async function runAgentLoop(
+            initialState: AgentState,
+            tools: ToolRegistry,
+            controller: AgentController,
+          ): Promise<AgentState> {
+            let state = initialState;
+
+            for (let i = 0; i < state.maxIterations; i += 1) {
+              state = { ...state, iteration: i + 1, status: 'planning' };
+              const decision = await controller.plan(state, tools);
+
+              if (decision.kind === 'ask_user') {
+                return { ...state, status: 'waiting_for_user', pendingQuestion: decision.question };
+              }
+
+              if (decision.kind === 'complete') {
+                return { ...state, status: 'completed' };
+              }
+
+              if (decision.kind === 'fail') {
+                return { ...state, status: 'failed' };
+              }
+
+              if (!decision.tool) {
+                return { ...state, status: 'failed' };
+              }
+
+              const action: AgentAction = {
+                id: crypto.randomUUID(),
+                tool: decision.tool,
+                reason: decision.reason,
+                input: decision.input ?? {},
+                expectedOutcome: decision.expectedOutcome,
+                status: 'running',
+                startedAt: new Date().toISOString(),
+              };
+              state = { ...state, status: 'acting', actions: [...state.actions, action] };
+
+              try {
+                const output = await tools.execute(decision.tool, decision.input ?? {}, state);
+                const observation: Observation = {
+                  id: crypto.randomUUID(),
+                  source: decision.tool,
+                  summary: 'Tool execution completed.',
+                  data: output,
+                  createdAt: new Date().toISOString(),
+                };
+                state = {
+                  ...state,
+                  status: 'evaluating',
+                  observations: [...state.observations, observation],
+                  actions: state.actions.map((item) =>
+                    item.id === action.id
+                      ? { ...item, status: 'succeeded', output, completedAt: new Date().toISOString() }
+                      : item,
+                  ),
+                };
+
+                const evaluation = await controller.evaluate(state, output);
+                if (evaluation.kind === 'complete') return { ...state, status: 'completed' };
+                if (evaluation.kind === 'ask_user') {
+                  return { ...state, status: 'waiting_for_user', pendingQuestion: evaluation.question };
+                }
+              } catch (error) {
+                state = {
+                  ...state,
+                  status: 'evaluating',
+                  actions: state.actions.map((item) =>
+                    item.id === action.id
+                      ? { ...item, status: 'failed', error: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() }
+                      : item,
+                  ),
+                };
+              }
+            }
+
+            return { ...state, status: 'failed' };
+          }
+EOF
+
+          cat > lib/agent-v2/README.md <<'EOF'
+          # Kavi Agent V2 Core
+
+          This layer introduces a goal-driven agent loop without deleting the mature Kavi V1 capabilities.
+
+          ## Core model
+
+          `Observe → Plan → Act → Observe → Evaluate → Replan`
+
+          The agent owns the decision. Existing commerce, RAG, multilingual, memory, search, and UI systems become capabilities/tools instead of competing routers.
+
+          ## Design rules
+
+          1. Goal is different from turn intent.
+          2. One AgentState is the source of truth for an active task.
+          3. Every action has a reason and expected outcome.
+          4. Tool failures do not silently change the user's goal.
+          5. Execution can fall back from MCP to REST without changing the agent decision.
+          6. The loop is bounded to prevent runaway tool use.
+          7. Deterministic code protects commerce, validation, permissions, and safety; the agent handles planning and adaptation.
+          EOF
+
+          cat > README-V2.md <<'EOF'
+          # Kavi AI Agent V2
+
+          V2 is an agentic evolution of `Kavi-Ai-Agent`.
+
+          The original repository remains untouched. V2 preserves the existing UI and business capabilities while introducing a centralized goal-driven agent architecture.
+
+          ## Architecture
+
+          ```text
+          User
+            ↓
+          Context / Memory
+            ↓
+          Goal Manager
+            ↓
+          Planner
+            ↓
+          Agent Loop
+            ├── Act → Tool
+            ├── Observe result
+            ├── Evaluate
+            └── Replan
+            ↓
+          Response
+          ```
+
+          ## First milestone
+
+          The new `lib/agent-v2` package establishes the common state, tool registry, and bounded action loop. Existing Kavi systems will be migrated into this model incrementally rather than rewritten blindly.
+          EOF
+
+          rm -rf .kavi-v1
+
+      - name: Commit v2 bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: create Kavi agent v2 architecture" || exit 0
+          git push
