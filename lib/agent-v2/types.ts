@@ -6,7 +6,7 @@ export type AgentSecurity = { userId: string; confirmation?: ConfirmationState }
 export type Observation = { id: string; source: string; summary: string; data?: unknown; createdAt: string };
 export type AgentAction = { id: string; tool: string; reason: string; input: unknown; expectedOutcome?: string; status: 'planned' | 'running' | 'succeeded' | 'failed'; output?: unknown; error?: string; startedAt?: string; completedAt?: string };
 export type AgentState = {
-  turnId: string; status: AgentStatus; userMessage: string; goal: Goal | null; constraints: Constraints; security: AgentSecurity;
+  turnId: string; status: AgentStatus; userMessage: string; goal: Goal | null; constraints: Constraints; security?: AgentSecurity;
   plan: string[]; observations: Observation[]; actions: AgentAction[]; iteration: number; maxIterations: number; pendingQuestion?: string;
   lastEvaluation?: { success: boolean; score: number; reason: string; nextStep?: string };
 };
