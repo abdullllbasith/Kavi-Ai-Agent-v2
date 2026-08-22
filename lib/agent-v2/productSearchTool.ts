@@ -13,6 +13,7 @@ export type ProductSearchPage = {
   next_cursor?: string | null;
 };
 
+/** Adapter boundary: MCP/REST/catalog implementation lives outside the agent. */
 export type ProductSearchExecutor = (
   query: string,
   options: { limit: number; maxPrice?: number },
@@ -22,10 +23,11 @@ export type SearchSession = {
   searches: Array<{ query: string; products: ProductSearchItem[] }>;
   selectedIds: string[];
   completed: boolean;
+  evaluations: number;
 };
 
 export function createSearchSession(): SearchSession {
-  return { searches: [], selectedIds: [], completed: false };
+  return { searches: [], selectedIds: [], completed: false, evaluations: 0 };
 }
 
 export function buildProductSearchTool(
@@ -54,7 +56,7 @@ export function buildEvaluateSearchTool(
   session: SearchSession,
 ): ToolDefinition<
   { quality: 'good' | 'weak' | 'empty'; issues?: string[]; suggestedNextQueries?: string[] },
-  { quality: string; resultCount: number; searchCount: number; canRefine: boolean; guidance: string }
+  { quality: string; resultCount: number; searchCount: number; evaluations: number; canRefine: boolean; guidance: string }
 > {
   return {
     name: 'evaluate_product_search',
@@ -62,16 +64,18 @@ export function buildEvaluateSearchTool(
     execute: async (input) => {
       const latest = session.searches.at(-1);
       const resultCount = latest?.products.length ?? 0;
-      const canRefine = session.searches.length < 3;
+      session.evaluations += 1;
+      const canRefine = session.searches.length < 3 && session.evaluations < 3;
 
       return {
         quality: input.quality,
         resultCount,
         searchCount: session.searches.length,
+        evaluations: session.evaluations,
         canRefine,
         guidance:
           !canRefine
-            ? 'Search budget exhausted. Select the best available candidates.'
+            ? 'Search/evaluation budget exhausted. Select the best available candidates.'
             : input.quality === 'good'
               ? 'Results are usable. The planner may complete the search.'
               : 'Results are weak. Refine the query before completing if the goal still needs better candidates.',
@@ -85,7 +89,7 @@ export function buildCompleteProductSearchTool(
 ): ToolDefinition<{ productIds: string[]; reason: string }, { ok: boolean; selectedIds: string[]; reason: string }> {
   return {
     name: 'complete_product_search',
-    description: 'Finish product discovery after evaluating candidates and select the products that best satisfy the goal.',
+    description: 'Finish product discovery after evaluating candidates and select products that best satisfy the goal.',
     execute: async ({ productIds, reason }) => {
       const known = new Set(session.searches.flatMap((search) => search.products.map((p) => p.product_id)));
       const selectedIds = [...new Set(productIds)].filter((id) => known.has(id));
