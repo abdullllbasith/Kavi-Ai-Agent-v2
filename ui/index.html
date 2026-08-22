@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>Kavi AI — Agent Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><div class="brand-mark">K</div><div><strong>Kavi</strong><span>AI Agent</span></div></div>
+      <button class="new-chat" id="newChat">＋ <span>New conversation</span></button>
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="chat">⌁ <span>Workspace</span></button>
+        <button class="nav-item" data-view="plans">◇ <span>Plans</span><b>3</b></button>
+        <button class="nav-item" data-view="memory">◉ <span>Memory</span></button>
+        <button class="nav-item" data-view="orders">▣ <span>Orders</span></button>
+      </nav>
+      <div class="recent-title">RECENT</div>
+      <div class="recent-list">
+        <button class="recent">Birthday gift for Sarah</button>
+        <button class="recent">Weekend trip ideas</button>
+        <button class="recent">Wireless headphones</button>
+      </div>
+      <div class="sidebar-bottom">
+        <button class="nav-item"><span>⚙</span><span>Settings</span></button>
+        <div class="user"><div class="avatar">AB</div><div><strong>Abdul</strong><span>Personal workspace</span></div><span class="dots">•••</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu">☰</button>
+        <div><div class="eyebrow">KAVI V2</div><h1 id="viewTitle">Agent Workspace</h1></div>
+        <div class="top-actions"><span class="status-dot"></span><span class="online">Agent online</span><button class="icon-btn" aria-label="Notifications">♢</button></div>
+      </header>
+
+      <section class="workspace" id="chatView">
+        <div class="chat-column">
+          <div class="goal-card">
+            <div class="goal-icon">◎</div><div class="goal-content"><div class="label-row"><span class="label">CURRENT GOAL</span><span class="goal-status">IN PROGRESS</span></div><strong>Find a thoughtful birthday gift under LKR 5,000</strong><div class="criteria"><span>✓ Budget</span><span>✓ Birthday</span><span>● Finding best match</span></div></div><button class="more">•••</button>
+          </div>
+
+          <div class="messages" id="messages">
+            <div class="message assistant"><div class="message-avatar">K</div><div><div class="message-meta">Kavi <span>just now</span></div><div class="bubble">I’ve understood what you’re looking for. I’ll prioritize something thoughtful, within your budget, and suitable for a birthday rather than just picking the cheapest option.</div></div></div>
+            <div class="agent-activity"><div class="activity-head"><span class="pulse"></span><strong>Kavi is working</strong><button id="toggleActivity">Hide</button></div><div class="activity-list"><div class="activity done"><span>✓</span><div><strong>Understanding your request</strong><small>Goal and budget established</small></div></div><div class="activity done"><span>✓</span><div><strong>Searching products</strong><small>24 relevant products found</small></div></div><div class="activity active"><span>●</span><div><strong>Comparing options</strong><small>Checking relevance, price and availability</small></div></div><div class="activity"><span>○</span><div><strong>Prepare recommendation</strong><small>Waiting for comparison</small></div></div></div></div>
+            <div class="message assistant"><div class="message-avatar">K</div><div><div class="message-meta">Kavi <span>working</span></div><div class="bubble">I found three strong candidates. The first one has the best overall match based on the goal criteria.</div></div></div>
+            <div class="product-grid">
+              <article class="product-card featured"><div class="product-image headphones">◒</div><div class="match">92% MATCH</div><h3>Premium Wireless Headphones</h3><p class="muted">Balanced sound · 30h battery</p><div class="price-row"><strong>LKR 4,490</strong><span class="stock">In stock</span></div><div class="product-actions"><button class="secondary">Details</button><button class="primary add" data-product="Premium Wireless Headphones">Add to cart</button></div></article>
+              <article class="product-card"><div class="product-image watch">◌</div><div class="match">87% MATCH</div><h3>Minimalist Smart Watch</h3><p class="muted">Health tracking · 7-day battery</p><div class="price-row"><strong>LKR 4,750</strong><span class="stock">In stock</span></div><div class="product-actions"><button class="secondary">Details</button><button class="primary add" data-product="Minimalist Smart Watch">Add to cart</button></div></article>
+              <article class="product-card"><div class="product-image speaker">◉</div><div class="match">82% MATCH</div><h3>Compact Bluetooth Speaker</h3><p class="muted">Portable · Rich bass</p><div class="price-row"><strong>LKR 3,990</strong><span class="stock">In stock</span></div><div class="product-actions"><button class="secondary">Details</button><button class="primary add" data-product="Compact Bluetooth Speaker">Add to cart</button></div></article>
+            </div>
+            <div class="evidence-card"><div class="evidence-head"><strong>Why the first one?</strong><span>Verified criteria</span></div><div class="evidence-grid"><div>✓ Within LKR 5,000</div><div>✓ Birthday-appropriate</div><div>✓ Available now</div><div>✓ Strong overall match</div></div></div>
+          </div>
+          <div class="composer-wrap"><div class="composer"><button class="attach">＋</button><input id="messageInput" placeholder="Tell Kavi what you need…" autocomplete="off"/><button class="voice">◉</button><button class="send" id="sendMessage">↑</button></div><div class="composer-note">Kavi can plan, compare and act on your behalf. You stay in control of important actions.</div></div>
+        </div>
+        <aside class="context-panel">
+          <div class="panel-header"><strong>Agent context</strong><button class="icon-btn">×</button></div>
+          <div class="context-section"><div class="section-title">GOAL PROGRESS <span>72%</span></div><div class="progress"><i style="width:72%"></i></div><div class="mini-grid"><div><strong>3</strong><small>Criteria</small></div><div><strong>24</strong><small>Results</small></div><div><strong>1</strong><small>Action</small></div></div></div>
+          <div class="context-section"><div class="section-title">SUCCESS CRITERIA</div><div class="check-item done">✓ <span>Under LKR 5,000</span></div><div class="check-item done">✓ <span>Birthday suitable</span></div><div class="check-item active">● <span>Best overall match</span></div></div>
+          <div class="context-section"><div class="section-title">SECURITY</div><div class="security"><span class="shield">✓</span><div><strong>Protected</strong><small>Actions require authorization</small></div></div></div>
+          <div class="context-section"><div class="section-title">MEMORY USED</div><div class="memory-chip">◉ Prefers practical gifts <button>×</button></div><div class="memory-chip">◉ Usually shops under LKR 10k <button>×</button></div></div>
+        </aside>
+      </section>
+
+      <section class="secondary-view hidden" id="plansView"><div class="section-heading"><div><div class="eyebrow">AUTONOMOUS WORK</div><h2>Your plans</h2></div><button class="primary" id="createPlan">＋ New plan</button></div><div class="plans-grid"><div class="plan-card active-plan"><span class="plan-badge">IN PROGRESS</span><h3>Birthday gift for Sarah</h3><p>Find and prepare a thoughtful gift under LKR 5,000.</p><div class="plan-progress"><i style="width:72%"></i></div><small>72% complete · Last activity 2 min ago</small></div><div class="plan-card"><span class="plan-badge done-badge">COMPLETED</span><h3>Weekend trip ideas</h3><p>Compared three destinations and created a shortlist.</p><small>Completed yesterday</small></div><div class="plan-card"><span class="plan-badge">READY</span><h3>Weekly shopping</h3><p>Review your usual items and prepare a cart.</p><small>Not started</small></div></div></section>
+
+      <section class="secondary-view hidden" id="memoryView"><div class="section-heading"><div><div class="eyebrow">PERSONALIZATION</div><h2>Kavi's memory</h2><p class="muted">You control what Kavi remembers.</p></div><button class="secondary">Manage privacy</button></div><div class="memory-list"><div class="memory-row"><div class="memory-symbol">◉</div><div><strong>Prefers practical gifts</strong><p>Inferred from previous shopping conversations.</p></div><span class="confidence">High confidence</span><button>×</button></div><div class="memory-row"><div class="memory-symbol">◉</div><div><strong>Usually shops under LKR 10,000</strong><p>Explicit preference saved by you.</p></div><span class="confidence">Explicit</span><button>×</button></div><div class="memory-row"><div class="memory-symbol">◉</div><div><strong>Interested in technology</strong><p>Temporary preference from recent activity.</p></div><span class="confidence">Medium</span><button>×</button></div></div></section>
+
+      <section class="secondary-view hidden" id="ordersView"><div class="section-heading"><div><div class="eyebrow">COMMERCE</div><h2>Orders</h2></div></div><div class="order-card"><div class="order-icon">▣</div><div><strong>Order #KV-1048</strong><p>Premium Wireless Headphones · LKR 4,490</p></div><span class="order-status">Processing</span><button class="secondary">View</button></div><div class="order-card"><div class="order-icon">▣</div><div><strong>Order #KV-1031</strong><p>USB-C Hub · LKR 2,990</p></div><span class="order-status delivered">Delivered</span><button class="secondary">View</button></div></section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="modal-backdrop hidden" id="confirmModal"><div class="modal"><button class="modal-close" id="closeModal">×</button><div class="confirm-icon">✓</div><div class="eyebrow">SECURE ACTION</div><h2>Confirm add to cart</h2><p id="confirmProduct">Premium Wireless Headphones</p><div class="confirm-detail"><span>Price</span><strong id="confirmPrice">LKR 4,490</strong></div><div class="confirm-detail"><span>Authorization</span><span class="verified">✓ Verified</span></div><div class="modal-actions"><button class="secondary" id="cancelModal">Cancel</button><button class="primary" id="confirmAction">Confirm action</button></div><small>Kavi will only execute the exact action shown above.</small></div></div>
+  <script src="./app.js"></script>
+</body>
+</html>
