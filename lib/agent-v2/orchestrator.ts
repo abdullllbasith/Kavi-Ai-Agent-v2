@@ -2,6 +2,7 @@ import { runAgentLoop } from './agentLoop';
 import { createAgentState } from './state';
 import { establishGoal } from './goalManager';
 import { createKaprukaSearchRegistry } from './createKaprukaSearch';
+import { registerKaprukaMcpTools, KaprukaMcpClient } from './kaprukaMcp';
 import { registerProductIntelligenceTools } from './productIntelligenceRegistry';
 import { InMemoryAgentMemory } from './memory';
 import { EmptyKnowledgeRetriever, type KnowledgeRetriever } from './knowledge';
@@ -17,12 +18,19 @@ import { createMemoryAdapter } from './memoryAdapter';
 import type { KnowledgeBase } from './rag';
 import { createKnowledgeRetrieverAdapter } from './ragAdapter';
 
-export type KaviV2Dependencies = { userId: string; commerce?: CommerceExecutor; orders?: OrderExecutor; knowledge?: KnowledgeRetriever; knowledgeBase?: KnowledgeBase; memory?: PersistentMemoryStore; llm: LLMStructuredCall; previousState?: AgentState };
+export type KaviV2Dependencies = { userId: string; commerce?: CommerceExecutor; orders?: OrderExecutor; knowledge?: KnowledgeRetriever; knowledgeBase?: KnowledgeBase; memory?: PersistentMemoryStore; llm: LLMStructuredCall; previousState?: AgentState; kaprukaMcp?: KaprukaMcpClient };
+
+const defaultKaprukaMcp = new KaprukaMcpClient();
 
 export async function runKaviV2(userMessage: string, dependencies: KaviV2Dependencies) {
   const userId = dependencies.userId?.trim();
   if (!userId) throw new Error('userId is required.');
   const { registry, session } = createKaprukaSearchRegistry();
+  try {
+    await registerKaprukaMcpTools(registry, dependencies.kaprukaMcp ?? defaultKaprukaMcp);
+  } catch (error) {
+    console.warn('[kavi] Kapruka MCP unavailable; continuing with local tools.', error instanceof Error ? error.message : error);
+  }
   registerProductIntelligenceTools(registry);
   const memory = dependencies.memory ? createMemoryAdapter(dependencies.memory, userId) : new InMemoryAgentMemory();
   registry.register(createRecallMemoryTool(memory)); registry.register(createRememberTool(memory));
