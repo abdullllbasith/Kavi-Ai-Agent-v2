@@ -17,7 +17,7 @@ import { createMemoryAdapter } from './memoryAdapter';
 import type { KnowledgeBase } from './rag';
 import { createKnowledgeRetrieverAdapter } from './ragAdapter';
 
-export type KaviV2Dependencies = { userId: string; commerce?: CommerceExecutor; orders?: OrderExecutor; knowledge?: KnowledgeRetriever; knowledgeBase?: KnowledgeBase; memory?: PersistentMemoryStore; llm: LLMStructuredCall };
+export type KaviV2Dependencies = { userId: string; commerce?: CommerceExecutor; orders?: OrderExecutor; knowledge?: KnowledgeRetriever; knowledgeBase?: KnowledgeBase; memory?: PersistentMemoryStore; llm: LLMStructuredCall; previousState?: AgentState };
 
 export async function runKaviV2(userMessage: string, dependencies: KaviV2Dependencies) {
   const userId = dependencies.userId?.trim();
@@ -30,8 +30,12 @@ export async function runKaviV2(userMessage: string, dependencies: KaviV2Depende
   registry.register(createKnowledgeSearchTool(knowledge));
   if (dependencies.commerce) registerCommerceTools(registry, dependencies.commerce);
   if (dependencies.orders) for (const tool of registerOrderTools(dependencies.orders)) registry.register(tool);
-  const withGoal = establishGoal(createAgentState(userMessage, 8));
-  const initialState: AgentState = { ...withGoal, security: { userId } };
+
+  const previous = dependencies.previousState?.status === 'waiting_for_user' ? dependencies.previousState : undefined;
+  const initialState: AgentState = previous
+    ? { ...previous, userMessage, status: 'planning', pendingQuestion: undefined, security: { ...previous.security, userId } }
+    : { ...establishGoal(createAgentState(userMessage, 8)), security: { userId } };
+
   const language = detectLanguage(userMessage);
   const planner = createLLMPlanner(dependencies.llm); const evaluator = createLLMEvaluator(dependencies.llm);
   const finalState: AgentState = await runAgentLoop(initialState, registry, {
