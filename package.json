@@ -1,12 +1,15 @@
 {
   "name": "kavi-ai-agent-v2",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.1",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx tests/run.ts",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "dev": "tsx server.ts",
+    "start": "node --enable-source-maps dist/server.js",
+    "build": "tsc"
   },
   "devDependencies": {
     "tsx": "^4.20.0",
