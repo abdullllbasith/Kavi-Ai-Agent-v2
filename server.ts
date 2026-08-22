@@ -7,7 +7,9 @@ import { runKaviV2 } from './lib/agent-v2/orchestrator.js';
 import type { AgentState } from './lib/agent-v2/types.js';
 import { createOpenRouterCall } from './lib/agent-v2/openRouter.js';
 
-const root = fileURLToPath(new URL('.', import.meta.url));
+const moduleDir = fileURLToPath(new URL('.', import.meta.url));
+const projectRoot = moduleDir.endsWith('/dist/') ? join(moduleDir, '..') : moduleDir;
+const uiRoot = join(projectRoot, 'ui');
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '127.0.0.1';
 const cookieSecret = process.env.KAVI_SESSION_SECRET;
@@ -37,9 +39,9 @@ function setSession(res: ServerResponse, id: string) { res.setHeader('Set-Cookie
 function json(res: ServerResponse, status: number, body: unknown) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); }
 function securityHeaders(res: ServerResponse) { res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()'); res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"); }
 function allowed(key: string) { const now = Date.now(); const current = rate.get(key); if (!current || now - current.window >= WINDOW_MS) { rate.set(key, { window: now, count: 1 }); return true; } current.count += 1; return current.count <= MAX_REQUESTS; }
-async function body(req: IncomingMessage) { let data = ''; for await (const chunk of req) { data += chunk; if (data.length > 64_000) throw new Error('Request body too large.'); } return JSON.parse(data || '{}') as Record<string, unknown>; }
-function safePath(urlPath: string) { const requested = urlPath === '/' ? '/index.html' : urlPath; const normalized = normalize(requested).replace(/^([.][.][/\\])+/, ''); return join(root, 'ui', normalized); }
-async function serveStatic(req: IncomingMessage, res: ServerResponse) { const path = safePath(new URL(req.url ?? '/', `http://${host}`).pathname); if (!path.startsWith(join(root, 'ui'))) return json(res, 400, { error: 'Invalid path.' }); try { const data = await readFile(path); const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' }; res.writeHead(200, { 'Content-Type': types[extname(path)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(data); } catch { json(res, 404, { error: 'Not found.' }); } }
+async function body(req: IncomingMessage) { let data = ''; for await (const chunk of req) { data += chunk; if (data.length > 64_000) throw new Error('Request body too large.'); } try { return JSON.parse(data || '{}') as Record<string, unknown>; } catch { throw new Error('Invalid JSON request body.'); } }
+function safePath(urlPath: string) { const requested = urlPath === '/' ? '/index.html' : urlPath; const normalized = normalize(requested).replace(/^([.][.][/\\])+/, ''); return join(uiRoot, normalized); }
+async function serveStatic(req: IncomingMessage, res: ServerResponse) { const path = safePath(new URL(req.url ?? '/', `http://${host}`).pathname); if (!path.startsWith(uiRoot)) return json(res, 400, { error: 'Invalid path.' }); try { const data = await readFile(path); const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' }; res.writeHead(200, { 'Content-Type': types[extname(path)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(data); } catch { json(res, 404, { error: 'Not found.' }); } }
 
 const server = createServer(async (req, res) => {
   securityHeaders(res);
@@ -57,7 +59,8 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       if (!apiKey || !model) return json(res, 503, { error: 'Kavi LLM provider is not configured.' });
-      const input = await body(req); const message = typeof input.message === 'string' ? input.message.trim() : '';
+      let input: Record<string, unknown>; try { input = await body(req); } catch { return json(res, 400, { error: 'Invalid JSON request body.' }); }
+      const message = typeof input.message === 'string' ? input.message.trim() : '';
       if (!message || message.length > 4000) return json(res, 400, { error: 'Message must contain 1–4000 characters.' });
       const llm = createOpenRouterCall({ apiKey, model, siteUrl: process.env.PUBLIC_URL, siteName: 'Kavi AI V2' });
       const result = await runKaviV2(message, { userId: session!.userId, llm, previousState: session!.state });
