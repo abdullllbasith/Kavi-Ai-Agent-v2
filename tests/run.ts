@@ -4,6 +4,7 @@ import './commerceSecurity.js';
 import './orchestratorWiring.js';
 import './adversarialDecisions.js';
 import './completionEvidence.js';
+import './agentLoopRecovery.js';
 import { runIntegrationScenarios } from './integration.js';
 
 const guardrails = runGuardrailRegressionTests();
