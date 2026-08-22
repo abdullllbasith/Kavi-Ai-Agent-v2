@@ -1,6 +1,6 @@
 # Kavi AI Agent V2
 
-Kavi V2 is a goal-driven autonomous agent foundation with a secure action boundary, persistent-memory adapter, validated RAG retrieval, commerce authorization, recovery policies, and a production-oriented web UI/API.
+Kavi V2 is a goal-driven autonomous agent foundation with a secure action boundary, persistent-memory adapter, validated RAG retrieval, commerce authorization, recovery policies, a production-oriented web UI/API, and a live Kapruka MCP integration.
 
 The original `Kavi-Ai-Agent` repository remains unchanged.
 
@@ -17,7 +17,16 @@ Decision validation
   ↓
 Guardrails + authorization + confirmation
   ↓
-Tool execution
+ToolRegistry
+  ├── Local Kavi tools
+  └── Kapruka MCP (Streamable HTTP)
+        ├── product search
+        ├── product details
+        ├── categories
+        ├── delivery cities
+        ├── delivery checks
+        ├── guest checkout
+        └── order tracking
   ↓
 Observation
   ↓
@@ -52,6 +61,20 @@ NODE_ENV=production npm start
 
 The `ui/` directory contains the Kavi V2 agent workspace: chat, goal progress, agent activity, recommendations, evidence, confirmation, memory, plans and orders. The UI talks to the same-origin API instead of using fake assistant responses.
 
+## Kapruka MCP
+
+Kavi V2 connects to Kapruka's public MCP server through Streamable HTTP:
+
+`https://mcp.kapruka.com/mcp`
+
+The MCP integration discovers the server's advertised tools at runtime and exposes them through Kavi's existing `ToolRegistry`. This means Kapruka tools still pass through Kavi validation, authorization and confirmation boundaries.
+
+`kapruka_create_order` requires a Kavi security identity and a single-use confirmation before execution. Read/discovery tools do not require confirmation.
+
+The endpoint can be overridden with `KAPRUKA_MCP_URL`; the protocol version can be overridden with `KAPRUKA_MCP_PROTOCOL_VERSION`.
+
+Kapruka documents a 60 requests/minute per-IP limit and a 30 orders/hour per-IP limit for its public MCP server, so Kavi's own rate limits should remain enabled as a separate application-level control.
+
 ## API
 
 - `GET /api/health` — readiness/configuration status.
@@ -73,7 +96,7 @@ See [`docs/PRODUCTION.md`](docs/PRODUCTION.md) before deployment.
 
 ## Commerce integration
 
-The agent layer defines commerce/order executor contracts and enforces authorization and confirmation. Real merchant/payment/order integrations must be injected by the deployment; the repository does not invent or expose fake payment credentials or production side effects.
+The agent layer defines commerce/order executor contracts and enforces authorization and confirmation. Kapruka MCP is the live catalog/order discovery integration; any separate merchant/payment/account integrations still need to be injected by the deployment.
 
 ## Verification
 
@@ -88,4 +111,4 @@ GitHub Actions runs both checks on pushes, pull requests and manual dispatches.
 
 **`0.2.0-alpha.1` — production-oriented alpha.**
 
-The remaining production work is deployment-specific: connect real authenticated identity, persistent multi-instance session/state storage, real commerce/order executors, and complete end-to-end tests against those external systems.
+The remaining production work is deployment-specific: connect real authenticated identity, persistent multi-instance session/state storage, and complete end-to-end tests against external systems.
