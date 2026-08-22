@@ -1,5 +1,6 @@
 import type { AgentState, ToolDefinition } from './types';
 import { asRecord } from './inputValidation';
+import { isConfirmationValid } from './confirmation';
 
 export type ToolSecurityPolicy = {
   requiresConfirmation?: boolean;
@@ -37,8 +38,8 @@ export class ToolRegistry {
     asRecord(input, `${name} input`);
 
     if (policy.validate) policy.validate(input, state);
-    if (policy.requiresConfirmation && state.constraints.confirmed !== true) {
-      throw new Error(`Explicit confirmation required for tool ${name}.`);
+    if (policy.requiresConfirmation && !isConfirmationValid(state, name, input)) {
+      throw new Error(`Valid confirmation required for tool ${name}.`);
     }
     if (policy.authorize && !(await policy.authorize(input, state))) {
       throw new Error(`Tool authorization denied: ${name}.`);
