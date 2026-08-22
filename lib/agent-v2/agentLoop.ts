@@ -1,6 +1,7 @@
 import type { AgentState, AgentAction, Observation } from './types';
 import { ToolRegistry } from './toolRegistry';
 import { validateActionBudget, hasRepeatedAction, DEFAULT_GUARDRAILS, type GuardrailConfig } from './guardrails';
+import { hasSufficientEvidence } from './reliability';
 
 export type AgentDecision = { kind: 'act' | 'ask_user' | 'complete' | 'fail'; tool?: string; reason: string; input?: unknown; expectedOutcome?: string; question?: string };
 export type AgentController = {
@@ -16,7 +17,13 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
     try { decision = await controller.plan(state, tools); }
     catch (error) { return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: error instanceof Error ? error.message : String(error) } }; }
     if (decision.kind === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: decision.question };
-    if (decision.kind === 'complete') return { ...state, status: 'completed' };
+    if (decision.kind === 'complete') {
+      if (!hasSufficientEvidence(state)) {
+        state = { ...state, status: 'evaluating', lastEvaluation: { success: false, score: 0, reason: 'Planner attempted completion without sufficient evidence.' } };
+        continue;
+      }
+      return { ...state, status: 'completed' };
+    }
     if (decision.kind === 'fail' || !decision.tool) return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: decision.reason } };
     try { validateActionBudget(state.actions, decision.tool, guardrails); if (hasRepeatedAction(state.actions, decision.tool, decision.input)) return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: `Repeated identical action blocked: ${decision.tool}` } }; }
     catch (error) { return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: error instanceof Error ? error.message : String(error) } }; }
