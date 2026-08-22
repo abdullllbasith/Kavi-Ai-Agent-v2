@@ -9,9 +9,10 @@
     "check": "npm run typecheck && npm test",
     "dev": "tsx server.ts",
     "start": "node --enable-source-maps dist/server.js",
-    "build": "tsc"
+    "build": "tsc -p tsconfig.build.json"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }
