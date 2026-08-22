@@ -4,10 +4,7 @@ import { validateActionBudget, hasRepeatedAction, DEFAULT_GUARDRAILS, type Guard
 import { hasSufficientEvidence } from './reliability';
 
 export type AgentDecision = { kind: 'act' | 'ask_user' | 'complete' | 'fail'; tool?: string; reason: string; input?: unknown; expectedOutcome?: string; question?: string };
-export type AgentController = {
-  plan: (state: AgentState, tools: ToolRegistry) => Promise<AgentDecision>;
-  evaluate: (state: AgentState, result: unknown, tools: ToolRegistry) => Promise<AgentDecision>;
-};
+export type AgentController = { plan: (state: AgentState, tools: ToolRegistry) => Promise<AgentDecision>; evaluate: (state: AgentState, result: unknown, tools: ToolRegistry) => Promise<AgentDecision> };
 
 export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry, controller: AgentController, guardrails: GuardrailConfig = DEFAULT_GUARDRAILS): Promise<AgentState> {
   let state = initialState;
@@ -18,10 +15,7 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
     catch (error) { return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: error instanceof Error ? error.message : String(error) } }; }
     if (decision.kind === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: decision.question };
     if (decision.kind === 'complete') {
-      if (!hasSufficientEvidence(state)) {
-        state = { ...state, status: 'evaluating', lastEvaluation: { success: false, score: 0, reason: 'Planner attempted completion without sufficient evidence.' } };
-        continue;
-      }
+      if (!hasSufficientEvidence(state)) { state = { ...state, status: 'evaluating', lastEvaluation: { success: false, score: 0, reason: 'Planner attempted completion without sufficient evidence.' } }; continue; }
       return { ...state, status: 'completed' };
     }
     if (decision.kind === 'fail' || !decision.tool) return { ...state, status: 'failed', lastEvaluation: { success: false, score: 0, reason: decision.reason } };
@@ -34,8 +28,9 @@ export async function runAgentLoop(initialState: AgentState, tools: ToolRegistry
       const observation: Observation = { id: crypto.randomUUID(), source: decision.tool, summary: 'Tool execution completed.', data: output, createdAt: new Date().toISOString() };
       state = { ...state, status: 'evaluating', observations: [...state.observations, observation], actions: state.actions.map((item) => item.id === action.id ? { ...item, status: 'succeeded', output, completedAt: new Date().toISOString() } : item) };
       const evaluation = await controller.evaluate(state, output, tools);
-      state = { ...state, lastEvaluation: { success: evaluation.kind === 'complete', score: evaluation.kind === 'complete' ? 1 : 0, reason: evaluation.reason, nextStep: evaluation.tool } };
-      if (evaluation.kind === 'complete') return { ...state, status: 'completed' };
+      const evaluationComplete = evaluation.kind === 'complete' && hasSufficientEvidence(state);
+      state = { ...state, lastEvaluation: { success: evaluationComplete, score: evaluationComplete ? 1 : 0, reason: evaluationComplete ? evaluation.reason : evaluation.kind === 'complete' ? 'Completion rejected: insufficient evidence.' : evaluation.reason, nextStep: evaluation.tool } };
+      if (evaluationComplete) return { ...state, status: 'completed' };
       if (evaluation.kind === 'ask_user') return { ...state, status: 'waiting_for_user', pendingQuestion: evaluation.question };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
